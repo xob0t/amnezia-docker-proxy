@@ -1,0 +1,41 @@
+services:
+  amnezia:
+    build:
+      context: .
+      dockerfile: docker/amnezia/Dockerfile
+    container_name: amnezia-vpn
+    privileged: true
+    environment:
+      ACTIVE_CONFIG_FILE: amnezia.conf
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      net.ipv4.conf.all.src_valid_mark: 1
+      net.ipv4.ip_forward: 1
+    volumes:
+      - ./config:/config
+    ports:
+      - "${SOCKS_PORT:-1080}:1080"
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /config/amnezia.conf"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  proxy:
+    image: serjs/go-socks5-proxy:latest
+    container_name: amnezia-socks5
+    network_mode: service:amnezia
+    depends_on:
+      amnezia:
+        condition: service_healthy
+    environment:
+      REQUIRE_AUTH: ${REQUIRE_AUTH:-false}
+      PROXY_USER: ${PROXY_USER:-}
+      PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+    restart: unless-stopped
