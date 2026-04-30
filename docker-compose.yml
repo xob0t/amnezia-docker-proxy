@@ -19,6 +19,7 @@ services:
       - ./config:/config
     ports:
       - "${SOCKS_PORT:-1080}:1080"
+      - "${HTTP_PORT:-3128}:3128"
     healthcheck:
       test: ["CMD-SHELL", "test -s /config/amnezia.conf"]
       interval: 5s
@@ -28,14 +29,21 @@ services:
     restart: unless-stopped
 
   proxy:
-    image: serjs/go-socks5-proxy:latest
-    container_name: amnezia-socks5
+    build:
+      context: .
+      dockerfile: docker/proxy/Dockerfile
+    container_name: amnezia-proxy
     network_mode: service:amnezia
     depends_on:
       amnezia:
         condition: service_healthy
     environment:
-      REQUIRE_AUTH: ${REQUIRE_AUTH:-false}
       PROXY_USER: ${PROXY_USER:-}
       PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+      SOCKS5_USER: ${SOCKS5_USER:-}
+      SOCKS5_PASSWORD: ${SOCKS5_PASSWORD:-}
+      HTTP_USER: ${HTTP_USER:-}
+      HTTP_PASSWORD: ${HTTP_PASSWORD:-}
+      SOCKS5_PORT: ${SOCKS_PORT:-1080}
+      HTTP_PORT: ${HTTP_PORT:-3128}
     restart: unless-stopped
