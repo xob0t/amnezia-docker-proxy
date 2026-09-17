@@ -103,8 +103,11 @@ docker compose up -d --build
 
 - The Go builder uses Go 1.25. AmneziaWG source revisions are pinned in the Dockerfile so an upstream update cannot silently change the required compiler.
 - `HTTP_PORT` and `SOCKS_PORT` change the host ports. The proxy always listens on container ports 3128 and 1080.
+- `PROXY_CONNECTION_TIMEOUT` sets the inactivity timeout for HTTP CONNECT and SOCKS5 tunnels. It defaults to 21600 seconds so multi-hour uploads are not cut off by 3proxy's short defaults.
 - Published ports bind to loopback by default. Set `PROXY_BIND_ADDRESS=0.0.0.0` to accept external connections and configure authentication before doing so. Incomplete username/password pairs stop startup.
 - The proxy uses IPv4, binds outgoing connections to the VPN interface address, and reads DNS servers from the selected VPN config. Separate HTTP and SOCKS5 credentials are supported.
+- The image pins 3proxy 1.0.0 at commit `f6963ea302bd01209dc94f8677c3dba9f3504b4e`. Builds fail if the tag no longer resolves to that commit.
+- The runtime binary and config path use the `amnezia-proxy` name, isolating this container from host maintenance jobs that target unrelated `3proxy` processes.
 - `CONFIG_DIR` can point to a persistent directory outside the Git checkout. The VPN config is mounted read-only into both services. `ACTIVE_CONFIG_FILE` defaults to `amnezia.conf`.
 - For an IPv4-only host/profile that cannot install the supplied IPv6 routes, set `VPN_IPV6=false`. This removes IPv6 entries from `AllowedIPs` in the runtime copy, preserving the source config.
 - For Dokploy, set `PROXY_NETWORK_NAME=dokploy-network` and `PROXY_NETWORK_EXTERNAL=true`. Other containers on that network can use `amnezia-proxy:3128` or `amnezia-proxy:1080`. Keep the VPN config outside Dokploy's Git checkout so it survives redeployments.

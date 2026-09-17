@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-CONFIG="/etc/3proxy/3proxy.cfg"
-mkdir -p /etc/3proxy
+CONFIG="/etc/amnezia-proxy/proxy.cfg"
+mkdir -p /etc/amnezia-proxy
 umask 077
 
 ACTIVE_CONFIG_FILE="${ACTIVE_CONFIG_FILE:-amnezia.conf}"
@@ -10,6 +10,18 @@ VPN_INTERFACE="${ACTIVE_CONFIG_FILE%.conf}"
 VPN_ADDRESS=$(ip -4 -o addr show dev "$VPN_INTERFACE" | awk '{split($4, a, "/"); print a[1]; exit}')
 if [ -z "$VPN_ADDRESS" ]; then
     echo "No IPv4 address on VPN interface $VPN_INTERFACE" >&2
+    exit 1
+fi
+
+CONNECTION_TIMEOUT="${PROXY_CONNECTION_TIMEOUT:-21600}"
+case "$CONNECTION_TIMEOUT" in
+    ''|*[!0-9]*)
+        echo "PROXY_CONNECTION_TIMEOUT must be an integer between 1 and 2000000" >&2
+        exit 1
+        ;;
+esac
+if [ "$CONNECTION_TIMEOUT" -lt 1 ] || [ "$CONNECTION_TIMEOUT" -gt 2000000 ]; then
+    echo "PROXY_CONNECTION_TIMEOUT must be an integer between 1 and 2000000" >&2
     exit 1
 fi
 
@@ -49,9 +61,11 @@ fi
 
 cat > "$CONFIG" << 'CONF'
 nscache 65536
-log /dev/stdout
+log
 logformat "- +_L%t.%.  %N.%p %E %U %C:%c %R:%r %O %I %h %T"
 CONF
+printf 'timeouts 1 5 30 60 %s %s 15 60 30 5 30\n' \
+    "$CONNECTION_TIMEOUT" "$CONNECTION_TIMEOUT" >> "$CONFIG"
 
 # The proxy shares the VPN network namespace, but not its /etc/resolv.conf.
 awk -F= '/^[[:space:]]*DNS[[:space:]]*=/ {
@@ -99,4 +113,4 @@ else
 fi
 echo "socks -4 -p${SOCKS5_PORT:-1080} -i0.0.0.0 -e${VPN_ADDRESS}" >> "$CONFIG"
 
-exec 3proxy "$CONFIG"
+exec amnezia-proxy "$CONFIG"
