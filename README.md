@@ -109,3 +109,10 @@ docker compose up -d --build
 - For an IPv4-only host/profile that cannot install the supplied IPv6 routes, set `VPN_IPV6=false`. This removes IPv6 entries from `AllowedIPs` in the runtime copy, preserving the source config.
 - For Dokploy, set `PROXY_NETWORK_NAME=dokploy-network` and `PROXY_NETWORK_EXTERNAL=true`. Other containers on that network can use `amnezia-proxy:3128` or `amnezia-proxy:1080`. Keep the VPN config outside Dokploy's Git checkout so it survives redeployments.
 - Compose waits for the actual VPN interface and its IPv4 address before starting the proxy.
+To test a deployed proxy image on its Docker host, run the smoke test as root with Docker, curl, and nsenter available:
+
+```bash
+bash tests/proxy-smoke.sh VPN_CONTAINER PROXY_IMAGE /absolute/config/directory amnezia.conf
+```
+
+The final argument is the active config filename. The test checks HTTP CONNECT, SOCKS5 DNS resolution, matching VPN egress, and separate credentials in a temporary container that it removes on exit.
