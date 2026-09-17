@@ -18,6 +18,25 @@ echo "Using active config ${SOURCE_CONFIG}"
 cp "${SOURCE_CONFIG}" "${TARGET_CONFIG}"
 chmod 600 "${TARGET_CONFIG}"
 
+# Some IPv4-only profiles include an IPv6 default route that the host cannot add.
+if [[ "${VPN_IPV6:-true}" == "false" ]]; then
+  awk -F= '/^[[:space:]]*AllowedIPs[[:space:]]*=/ {
+    count = split($2, routes, /[ ,\t\r]+/)
+    line = "AllowedIPs = "
+    separator = ""
+    for (i = 1; i <= count; i++) {
+      if (routes[i] != "" && routes[i] !~ /:/) {
+        line = line separator routes[i]
+        separator = ", "
+      }
+    }
+    print line
+    next
+  } { print }' "${TARGET_CONFIG}" > "${TARGET_CONFIG}.ipv4"
+  mv "${TARGET_CONFIG}.ipv4" "${TARGET_CONFIG}"
+  chmod 600 "${TARGET_CONFIG}"
+fi
+
 cleanup() {
   awg-quick down "${TARGET_NAME}" >/dev/null 2>&1 || true
 }

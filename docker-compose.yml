@@ -3,10 +3,10 @@ services:
     build:
       context: .
       dockerfile: docker/amnezia/Dockerfile
-    container_name: amnezia-vpn
     privileged: true
     environment:
-      ACTIVE_CONFIG_FILE: amnezia.conf
+      ACTIVE_CONFIG_FILE: ${ACTIVE_CONFIG_FILE:-amnezia.conf}
+      VPN_IPV6: ${VPN_IPV6:-true}
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -16,34 +16,45 @@ services:
       net.ipv4.conf.all.src_valid_mark: 1
       net.ipv4.ip_forward: 1
     volumes:
-      - ./config:/config
+      - ${CONFIG_DIR:-./config}:/config:ro
     ports:
-      - "${SOCKS_PORT:-1080}:1080"
-      - "${HTTP_PORT:-3128}:3128"
+      - "${PROXY_BIND_ADDRESS:-127.0.0.1}:${SOCKS_PORT:-1080}:1080"
+      - "${PROXY_BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-3128}:3128"
     healthcheck:
-      test: ["CMD-SHELL", "test -s /config/amnezia.conf"]
+      test: ["CMD-SHELL", "awg show \"$${ACTIVE_CONFIG_FILE%.conf}\" >/dev/null 2>&1 && ip -4 addr show dev \"$${ACTIVE_CONFIG_FILE%.conf}\" | grep -q 'inet '"]
       interval: 5s
       timeout: 2s
       retries: 20
       start_period: 5s
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - amnezia-proxy
 
   proxy:
     build:
       context: .
       dockerfile: docker/proxy/Dockerfile
-    container_name: amnezia-proxy
     network_mode: service:amnezia
     depends_on:
       amnezia:
         condition: service_healthy
     environment:
+      ACTIVE_CONFIG_FILE: ${ACTIVE_CONFIG_FILE:-amnezia.conf}
       PROXY_USER: ${PROXY_USER:-}
       PROXY_PASSWORD: ${PROXY_PASSWORD:-}
       SOCKS5_USER: ${SOCKS5_USER:-}
       SOCKS5_PASSWORD: ${SOCKS5_PASSWORD:-}
       HTTP_USER: ${HTTP_USER:-}
       HTTP_PASSWORD: ${HTTP_PASSWORD:-}
-      SOCKS5_PORT: ${SOCKS_PORT:-1080}
-      HTTP_PORT: ${HTTP_PORT:-3128}
+      SOCKS5_PORT: 1080
+      HTTP_PORT: 3128
+    volumes:
+      - ${CONFIG_DIR:-./config}:/config:ro
     restart: unless-stopped
+
+networks:
+  default:
+    name: ${PROXY_NETWORK_NAME:-amnezia-proxy}
+    external: ${PROXY_NETWORK_EXTERNAL:-false}

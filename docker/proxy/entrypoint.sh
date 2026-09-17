@@ -3,6 +3,15 @@ set -e
 
 CONFIG="/etc/3proxy/3proxy.cfg"
 mkdir -p /etc/3proxy
+umask 077
+
+ACTIVE_CONFIG_FILE="${ACTIVE_CONFIG_FILE:-amnezia.conf}"
+VPN_INTERFACE="${ACTIVE_CONFIG_FILE%.conf}"
+VPN_ADDRESS=$(ip -4 -o addr show dev "$VPN_INTERFACE" | awk '{split($4, a, "/"); print a[1]; exit}')
+if [ -z "$VPN_ADDRESS" ]; then
+    echo "No IPv4 address on VPN interface $VPN_INTERFACE" >&2
+    exit 1
+fi
 
 is_true() {
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
@@ -22,13 +31,15 @@ HTTP_AUTH_ENABLED=false
 if [ -n "$SOCKS5_USER" ] && [ -n "$SOCKS5_PASSWORD" ]; then
     SOCKS5_AUTH_ENABLED=true
 elif [ -n "$SOCKS5_USER" ] || [ -n "$SOCKS5_PASSWORD" ]; then
-    echo "SOCKS5 auth disabled: both SOCKS5_USER and SOCKS5_PASSWORD must be set" >&2
+    echo "Both SOCKS5_USER and SOCKS5_PASSWORD must be set" >&2
+    exit 1
 fi
 
 if [ -n "$HTTP_USER" ] && [ -n "$HTTP_PASSWORD" ]; then
     HTTP_AUTH_ENABLED=true
 elif [ -n "$HTTP_USER" ] || [ -n "$HTTP_PASSWORD" ]; then
-    echo "HTTP auth disabled: both HTTP_USER and HTTP_PASSWORD must be set" >&2
+    echo "Both HTTP_USER and HTTP_PASSWORD must be set" >&2
+    exit 1
 fi
 
 if is_true "$SOCKS5_AUTH_ENABLED" && is_true "$HTTP_AUTH_ENABLED" && [ "$SOCKS5_USER" = "$HTTP_USER" ] && [ "$SOCKS5_PASSWORD" != "$HTTP_PASSWORD" ]; then
@@ -38,9 +49,17 @@ fi
 
 cat > "$CONFIG" << 'CONF'
 nscache 65536
-log /dev/stdout D
+log /dev/stdout
 logformat "- +_L%t.%.  %N.%p %E %U %C:%c %R:%r %O %I %h %T"
 CONF
+
+# The proxy shares the VPN network namespace, but not its /etc/resolv.conf.
+awk -F= '/^[[:space:]]*DNS[[:space:]]*=/ {
+    count = split($2, servers, /[ ,\t\r]+/)
+    for (i = 1; i <= count; i++)
+        if (servers[i] ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)
+            print "nserver " servers[i]
+}' "/config/$ACTIVE_CONFIG_FILE" >> "$CONFIG"
 
 USERS=""
 if is_true "$SOCKS5_AUTH_ENABLED"; then
@@ -50,7 +69,7 @@ fi
 if is_true "$HTTP_AUTH_ENABLED"; then
     if ! is_true "$SOCKS5_AUTH_ENABLED" || [ "$HTTP_USER" != "$SOCKS5_USER" ] || [ "$HTTP_PASSWORD" != "$SOCKS5_PASSWORD" ]; then
         if [ -n "$USERS" ]; then
-            USERS="${USERS},${HTTP_USER}:CL:${HTTP_PASSWORD}"
+            USERS="${USERS} ${HTTP_USER}:CL:${HTTP_PASSWORD}"
         else
             USERS="${HTTP_USER}:CL:${HTTP_PASSWORD}"
         fi
@@ -68,7 +87,7 @@ else
     echo "auth none" >> "$CONFIG"
     echo "allow *" >> "$CONFIG"
 fi
-echo "proxy -p${HTTP_PORT:-3128}" >> "$CONFIG"
+echo "proxy -4 -p${HTTP_PORT:-3128} -i0.0.0.0 -e${VPN_ADDRESS}" >> "$CONFIG"
 echo "flush" >> "$CONFIG"
 
 if is_true "$SOCKS5_AUTH_ENABLED"; then
@@ -78,6 +97,6 @@ else
     echo "auth none" >> "$CONFIG"
     echo "allow *" >> "$CONFIG"
 fi
-echo "socks -p${SOCKS5_PORT:-1080}" >> "$CONFIG"
+echo "socks -4 -p${SOCKS5_PORT:-1080} -i0.0.0.0 -e${VPN_ADDRESS}" >> "$CONFIG"
 
 exec 3proxy "$CONFIG"

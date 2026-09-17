@@ -99,3 +99,13 @@ docker compose up -d --build
 - `docker/amnezia/Dockerfile` — кастомный Alpine-образ с `amneziawg-go` и `amneziawg-tools`.
 - `docker/amnezia/init.sh` — запуск активного профиля.
 - `docker/proxy/Dockerfile` + `entrypoint.sh` — образ с `3proxy`, обслуживающий SOCKS5 и HTTP.
+## Deployment notes for this mirror
+
+- The Go builder uses Go 1.25. AmneziaWG source revisions are pinned in the Dockerfile so an upstream update cannot silently change the required compiler.
+- `HTTP_PORT` and `SOCKS_PORT` change the host ports. The proxy always listens on container ports 3128 and 1080.
+- Published ports bind to loopback by default. Set `PROXY_BIND_ADDRESS=0.0.0.0` to accept external connections and configure authentication before doing so. Incomplete username/password pairs stop startup.
+- The proxy uses IPv4, binds outgoing connections to the VPN interface address, and reads DNS servers from the selected VPN config. Separate HTTP and SOCKS5 credentials are supported.
+- `CONFIG_DIR` can point to a persistent directory outside the Git checkout. The VPN config is mounted read-only into both services. `ACTIVE_CONFIG_FILE` defaults to `amnezia.conf`.
+- For an IPv4-only host/profile that cannot install the supplied IPv6 routes, set `VPN_IPV6=false`. This removes IPv6 entries from `AllowedIPs` in the runtime copy, preserving the source config.
+- For Dokploy, set `PROXY_NETWORK_NAME=dokploy-network` and `PROXY_NETWORK_EXTERNAL=true`. Other containers on that network can use `amnezia-proxy:3128` or `amnezia-proxy:1080`. Keep the VPN config outside Dokploy's Git checkout so it survives redeployments.
+- Compose waits for the actual VPN interface and its IPv4 address before starting the proxy.
