@@ -67,7 +67,7 @@ CONF
 printf 'timeouts 1 5 30 60 %s %s 15 60 30 5 30\n' \
     "$CONNECTION_TIMEOUT" "$CONNECTION_TIMEOUT" >> "$CONFIG"
 
-# The proxy shares the VPN network namespace, but not its /etc/resolv.conf.
+# Resolve through the VPN DNS servers from the active config.
 awk -F= '/^[[:space:]]*DNS[[:space:]]*=/ {
     count = split($2, servers, /[ ,\t\r]+/)
     for (i = 1; i <= count; i++)

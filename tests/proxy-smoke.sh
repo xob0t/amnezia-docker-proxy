@@ -2,7 +2,7 @@
 # Run on the Docker host against an existing VPN container and its config directory.
 set -euo pipefail
 vpn_container=${1:?VPN container required}
-image=${2:?Proxy image required}
+image=${2:?Amnezia image required}
 config_dir=${3:?Absolute VPN config directory required}
 active_config=${4:-amnezia.conf}
 name="amnezia-proxy-smoke-$$"
@@ -17,7 +17,7 @@ docker run --rm -d --name "$name" --network "container:$vpn_container" \
   -e HTTP_PORT=14128 -e SOCKS5_PORT=12080 \
   -e HTTP_USER=httpcheck -e HTTP_PASSWORD=test-http \
   -e SOCKS5_USER=sockscheck -e SOCKS5_PASSWORD=test-socks \
-  "$image" >/dev/null
+  --entrypoint /proxy-entrypoint.sh "$image" >/dev/null
 
 [[ "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" == "3proxy-1.0.0" ]]
 [[ "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "f6963ea302bd01209dc94f8677c3dba9f3504b4e" ]]
@@ -53,13 +53,13 @@ cleanup
 
 if docker run --rm --network "container:$vpn_container" \
   -v "$config_dir:/config:ro" -e "ACTIVE_CONFIG_FILE=$active_config" \
-  -e HTTP_USER=incomplete "$image" >/dev/null 2>&1; then
+  -e HTTP_USER=incomplete --entrypoint /proxy-entrypoint.sh "$image" >/dev/null 2>&1; then
   echo 'Proxy accepted incomplete credentials' >&2
   exit 1
 fi
 if docker run --rm --network "container:$vpn_container" \
   -v "$config_dir:/config:ro" -e "ACTIVE_CONFIG_FILE=$active_config" \
-  -e PROXY_CONNECTION_TIMEOUT=invalid "$image" >/dev/null 2>&1; then
+  -e PROXY_CONNECTION_TIMEOUT=invalid --entrypoint /proxy-entrypoint.sh "$image" >/dev/null 2>&1; then
   echo 'Proxy accepted an invalid connection timeout' >&2
   exit 1
 fi

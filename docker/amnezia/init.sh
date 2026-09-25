@@ -44,5 +44,6 @@ trap cleanup EXIT TERM INT
 
 awg-quick up "${TARGET_NAME}"
 
-# Keep container alive while interface stays up.
-tail -f /dev/null
+# The proxy runs in this container so it always shares the current VPN namespace.
+# If it exits, the container exits and Docker restarts the whole stack.
+/proxy-entrypoint.sh

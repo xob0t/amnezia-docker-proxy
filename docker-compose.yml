@@ -7,6 +7,15 @@ services:
     environment:
       ACTIVE_CONFIG_FILE: ${ACTIVE_CONFIG_FILE:-amnezia.conf}
       VPN_IPV6: ${VPN_IPV6:-true}
+      PROXY_USER: ${PROXY_USER:-}
+      PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+      SOCKS5_USER: ${SOCKS5_USER:-}
+      SOCKS5_PASSWORD: ${SOCKS5_PASSWORD:-}
+      HTTP_USER: ${HTTP_USER:-}
+      HTTP_PASSWORD: ${HTTP_PASSWORD:-}
+      PROXY_CONNECTION_TIMEOUT: ${PROXY_CONNECTION_TIMEOUT:-21600}
+      SOCKS5_PORT: 1080
+      HTTP_PORT: 3128
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -21,7 +30,7 @@ services:
       - "${PROXY_BIND_ADDRESS:-127.0.0.1}:${SOCKS_PORT:-1080}:1080"
       - "${PROXY_BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-3128}:3128"
     healthcheck:
-      test: ["CMD-SHELL", "awg show \"$${ACTIVE_CONFIG_FILE%.conf}\" >/dev/null 2>&1 && ip -4 addr show dev \"$${ACTIVE_CONFIG_FILE%.conf}\" | grep -q 'inet '"]
+      test: ["CMD-SHELL", "awg show \"$${ACTIVE_CONFIG_FILE%.conf}\" >/dev/null 2>&1 && ip -4 addr show dev \"$${ACTIVE_CONFIG_FILE%.conf}\" | grep -q 'inet ' && nc -z 127.0.0.1 3128 && nc -z 127.0.0.1 1080"]
       interval: 5s
       timeout: 2s
       retries: 20
@@ -31,29 +40,6 @@ services:
       default:
         aliases:
           - amnezia-proxy
-
-  proxy:
-    build:
-      context: .
-      dockerfile: docker/proxy/Dockerfile
-    network_mode: service:amnezia
-    depends_on:
-      amnezia:
-        condition: service_healthy
-    environment:
-      ACTIVE_CONFIG_FILE: ${ACTIVE_CONFIG_FILE:-amnezia.conf}
-      PROXY_USER: ${PROXY_USER:-}
-      PROXY_PASSWORD: ${PROXY_PASSWORD:-}
-      SOCKS5_USER: ${SOCKS5_USER:-}
-      SOCKS5_PASSWORD: ${SOCKS5_PASSWORD:-}
-      HTTP_USER: ${HTTP_USER:-}
-      HTTP_PASSWORD: ${HTTP_PASSWORD:-}
-      PROXY_CONNECTION_TIMEOUT: ${PROXY_CONNECTION_TIMEOUT:-21600}
-      SOCKS5_PORT: 1080
-      HTTP_PORT: 3128
-    volumes:
-      - ${CONFIG_DIR:-./config}:/config:ro
-    restart: unless-stopped
 
 networks:
   default:

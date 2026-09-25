@@ -46,7 +46,7 @@ docker compose up -d --build
 
 ```bash
 docker compose ps
-docker compose logs --tail=100 amnezia proxy
+docker compose logs --tail=100 amnezia
 ```
 
 ## 4) Использование прокси в приложениях
@@ -91,14 +91,14 @@ docker compose up -d --build
 
 ## Как это работает внутри
 
-- `amnezia` — запускает только активный `config/amnezia.conf` в самособранном Alpine-образе.
-- `proxy` — поднимает SOCKS5 на `1080` и HTTP на `3128` через `3proxy`; работает в сетевом namespace VPN-контейнера.
+- `amnezia` — единственный контейнер: поднимает активный `config/amnezia.conf` в самособранном Alpine-образе, затем запускает `3proxy` с SOCKS5 на `1080` и HTTP на `3128`. Если прокси падает, падает весь контейнер, и Docker перезапускает VPN и прокси вместе.
 
 ## Что в проекте
 
 - `docker/amnezia/Dockerfile` — кастомный Alpine-образ с `amneziawg-go` и `amneziawg-tools`.
-- `docker/amnezia/init.sh` — запуск активного профиля.
-- `docker/proxy/Dockerfile` + `entrypoint.sh` — образ с `3proxy`, обслуживающий SOCKS5 и HTTP.
+- `docker/amnezia/init.sh` — запуск активного профиля и прокси.
+- `docker/proxy/entrypoint.sh` — генерирует конфиг `3proxy` для SOCKS5 и HTTP и запускает его.
+
 ## Deployment notes for this mirror
 
 - The Go builder uses Go 1.25. AmneziaWG source revisions are pinned in the Dockerfile so an upstream update cannot silently change the required compiler.
@@ -108,14 +108,15 @@ docker compose up -d --build
 - The proxy uses IPv4, binds outgoing connections to the VPN interface address, and reads DNS servers from the selected VPN config. Separate HTTP and SOCKS5 credentials are supported.
 - The image pins 3proxy 1.0.0 at commit `f6963ea302bd01209dc94f8677c3dba9f3504b4e`. Builds fail if the tag no longer resolves to that commit.
 - The runtime binary and config path use the `amnezia-proxy` name, isolating this container from host maintenance jobs that target unrelated `3proxy` processes.
-- `CONFIG_DIR` can point to a persistent directory outside the Git checkout. The VPN config is mounted read-only into both services. `ACTIVE_CONFIG_FILE` defaults to `amnezia.conf`.
+- `CONFIG_DIR` can point to a persistent directory outside the Git checkout. The VPN config is mounted read-only. `ACTIVE_CONFIG_FILE` defaults to `amnezia.conf`.
 - For an IPv4-only host/profile that cannot install the supplied IPv6 routes, set `VPN_IPV6=false`. This removes IPv6 entries from `AllowedIPs` in the runtime copy, preserving the source config.
 - For Dokploy, set `PROXY_NETWORK_NAME=dokploy-network` and `PROXY_NETWORK_EXTERNAL=true`. Other containers on that network can use `amnezia-proxy:3128` or `amnezia-proxy:1080`. Keep the VPN config outside Dokploy's Git checkout so it survives redeployments.
-- Compose waits for the actual VPN interface and its IPv4 address before starting the proxy.
-To test a deployed proxy image on its Docker host, run the smoke test as root with Docker, curl, and nsenter available:
+- The proxy starts only after the VPN interface has its IPv4 address. It runs in the VPN container rather than a `network_mode: service:` sidecar, because a sidecar keeps the old network namespace when the VPN container restarts or the host reboots and then silently stops accepting connections. The healthcheck covers the VPN interface and both proxy ports.
+
+To test a deployed image on its Docker host, run the smoke test as root with Docker, curl, and nsenter available:
 
 ```bash
-bash tests/proxy-smoke.sh VPN_CONTAINER PROXY_IMAGE /absolute/config/directory amnezia.conf
+bash tests/proxy-smoke.sh VPN_CONTAINER AMNEZIA_IMAGE /absolute/config/directory amnezia.conf
 ```
 
 The final argument is the active config filename. The test checks HTTP CONNECT, SOCKS5 DNS resolution, matching VPN egress, and separate credentials in a temporary container that it removes on exit.
